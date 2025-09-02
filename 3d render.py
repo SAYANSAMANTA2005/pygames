@@ -45,7 +45,7 @@ SPEED = 5
 def update():
     move = Vec3(
         (held_keys['d'] - held_keys['a']),
-        0,
+          (held_keys['u'] - held_keys['j']),
         (held_keys['w'] - held_keys['s'])
     ) * time.dt * SPEED
     player.position += move
@@ -54,3 +54,4 @@ def update():
     camera.look_at(player)
 
 app.run()
+
