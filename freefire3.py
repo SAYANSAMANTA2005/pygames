@@ -32,7 +32,8 @@ ENEMY_SLIDER_HANDLE_W, ENEMY_SLIDER_HANDLE_H = 20, 30
 ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 30   # user can allow 1–30 enemies
 
 
-#
+# GEANADE 
+GRANADE_EXPLOSION_RADIOUS=1000
 
 # ---------- UTIL: procedural art ----------
 def make_player_surface(size=96):
@@ -234,7 +235,8 @@ class Grenade(pygame.sprite.Sprite):
 
         # Damage enemies in radius
         for enemy in enemies:
-            if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= self.radius:
+            #if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= self.radius:
+            if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= GRANADE_EXPLOSION_RADIOUS:
                 enemy.kill()  # simple: instant kill
 
         self.kill()
