@@ -34,7 +34,8 @@ ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 30   # user can allow 1–30 enemies
 
 # GEANADE 
 GRANADE_EXPLOSION_RADIOUS=1000
-
+# Boss settings
+BOSS_APPERENCE_DURATION=2
 # ---------- UTIL: procedural art ----------
 def make_player_surface(size=96):
     w, h = size, size
@@ -190,6 +191,59 @@ class Enemy(pygame.sprite.Sprite):
             direction = direction.normalize()
             b = Bullet(self.pos.x + direction.x*10, self.pos.y + direction.y*10, direction, ENEMY_BULLET_SPEED, random.randint(6,12), 'enemy')
             bullets_group.add(b)
+class Boss(Enemy):
+    def __init__(self, surf, x, y):
+        super().__init__(surf, x, y)
+        self.orig = pygame.transform.smoothscale(surf, (200, 200))
+        #
+        self.size = 200
+        pygame.draw.polygon(
+            self.orig, 
+            (180, 40, 40), 
+            [
+                (self.size*0.5, 0),
+                (self.size*0.93, self.size*0.25),
+                (self.size*0.93, self.size*0.75),
+                (self.size*0.5, self.size),
+                (self.size*0.07, self.size*0.75),
+                (self.size*0.07, self.size*0.25)
+            ]
+        )
+        pygame.draw.circle(self.orig, (255, 255, 0), (int(self.size*0.3), int(self.size*0.35)), int(self.size*0.08))
+        pygame.draw.circle(self.orig, (255, 255, 0), (int(self.size*0.7), int(self.size*0.35)), int(self.size*0.08))
+        # Mouth: black rectangle
+        pygame.draw.rect(self.orig, (0,0,0), (self.size*0.3, self.size*0.6, self.size*0.4, self.size*0.1))
+
+        #
+        self.image = self.orig.copy()
+        self.rect = self.image.get_rect(center=(x, y))
+        self.pos = Vector2(self.rect.center)
+        self.speed = 60
+        self.health = 800 + random.randint(-50, 50)  # Boss HP
+        self.fire_timer = 2.0  # slower fire
+        self.special_timer = 5.0  # special attack cooldown
+
+    def update(self, dt, player, bullets_group):
+        super().update(dt, player, bullets_group)
+        # Boss special attack
+        self.special_timer -= dt
+        if self.special_timer <= 0:
+            self.special_timer = random.uniform(4, 7)
+            self.special_attack(player, bullets_group)
+
+    def special_attack(self, player, bullets_group):
+        # Shoot 3 bullets in spread toward player
+        direction = (player.pos - self.pos).normalize()
+        angles = [-15, 0, 15]  # degrees spread
+        for ang in angles:
+            rad = math.radians(ang)
+            rotated = Vector2(
+                direction.x * math.cos(rad) - direction.y * math.sin(rad),
+                direction.x * math.sin(rad) + direction.y * math.cos(rad)
+            )
+            b = Bullet(self.pos.x + rotated.x*20, self.pos.y + rotated.y*20, rotated, ENEMY_BULLET_SPEED, 25, 'enemy')
+            bullets_group.add(b)
+            
 class Explosion(pygame.sprite.Sprite):
     def __init__(self, pos, radius):
         super().__init__()
@@ -273,6 +327,7 @@ class Pickup(pygame.sprite.Sprite):
 
 # ---------- MAIN ----------
 def main():
+    wave_counter = 0
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("FreeFire-like (Procedural Art, Offline)")
@@ -391,6 +446,16 @@ def main():
             spawn_timer -= dt
             if spawn_timer <= 0:
                 spawn_timer = max(0.75 - (player.score * 0.0015), 0.28)
+                #
+                wave_counter += 1
+    
+    # Every 5th wave spawn a boss
+                if wave_counter % BOSS_APPERENCE_DURATION == 0:
+                   x = random.choice([-200, SCREEN_W+200])
+                   y = random.randint(0, SCREEN_H)
+                   boss = Boss(enemy_surf, x, y)
+                   enemies.add(boss)
+                #
                 side = random.choice(['top','bottom','left','right'])
                 if side == 'top':
                     x = random.randint(0, SCREEN_W); y = -60
@@ -406,12 +471,16 @@ def main():
 
             # update enemies
             for e in list(enemies):
-                e.update(dt, player, bullets)
-                if e.health <= 0:
+             e.update(dt, player, bullets)
+             if e.health <= 0:
+                if isinstance(e, Boss):
+                       player.score += 200  # high reward
+                else:
+                    player.score += 10
                     if random.random() < 0.33:
                         pickups.add(Pickup(random.choice(['health','ammo']), e.pos.x, e.pos.y))
-                    e.kill()
-                    player.score += 10
+                e.kill()
+                   
 
             bullets.update(dt)
             
