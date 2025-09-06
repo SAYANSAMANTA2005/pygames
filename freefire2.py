@@ -13,15 +13,26 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 
 PLAYER_SPEED = 340
-PLAYER_MAX_HEALTH = 140
+PLAYER_MAX_HEALTH = 14000
 PLAYER_MAX_AMMO = 200
 PLAYER_FIRE_RATE_RIFLE = 0.09
-PLAYER_FIRE_RATE_PISTOL = 0.20
+PLAYER_FIRE_RATE_PISTOL = 20
 PLAYER_BULLET_SPEED = 1400
 ENEMY_BULLET_SPEED = 700
 ENEMY_SPAWN_START = 1.4
 SAFE_ZONE_SHRINK_INTERVAL = 10.0
 SAFE_ZONE_SHRINK_FACTOR = 0.80
+
+MAX_ENEMYS_ON_SCREEN=10
+
+# Enemy count slider settings
+ENEMY_SLIDER_X, ENEMY_SLIDER_Y = 50, 60
+ENEMY_SLIDER_W, ENEMY_SLIDER_H = 200, 10
+ENEMY_SLIDER_HANDLE_W, ENEMY_SLIDER_HANDLE_H = 20, 30
+ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 30   # user can allow 1–30 enemies
+
+
+#
 
 # ---------- UTIL: procedural art ----------
 def make_player_surface(size=96):
@@ -94,7 +105,8 @@ class Player(pygame.sprite.Sprite):
         self.fire_timer = 0.0
         self.weapons = {
             'rifle': [PLAYER_FIRE_RATE_RIFLE, 16, PLAYER_BULLET_SPEED, self.ammo],
-            'pistol': [PLAYER_FIRE_RATE_PISTOL, 34, PLAYER_BULLET_SPEED*0.75, self.ammo]
+            'pistol': [PLAYER_FIRE_RATE_PISTOL, 34, PLAYER_BULLET_SPEED*0.6, self.ammo],
+            'BEST GUN': [PLAYER_FIRE_RATE_PISTOL*2, 50, PLAYER_BULLET_SPEED*1.15, self.ammo]
         }
         self.current_weapon = 'rifle'
         self.score = 0 
@@ -229,6 +241,7 @@ def main():
 
     player = Player(player_surf)
     player_group.add(player)
+    player_group.add(player)
 
     spawn_timer = ENEMY_SPAWN_START
     running = True
@@ -246,6 +259,9 @@ def main():
     safe_shrink_timer = SAFE_ZONE_SHRINK_INTERVAL
 
     pygame.mouse.set_visible(False)
+    enemy_slider_value = 0.3  # between 0 and 1
+    enemy_dragging = False
+    max_enemies = int(ENEMY_MIN_LIMIT + enemy_slider_value * (ENEMY_MAX_LIMIT - ENEMY_MIN_LIMIT))
 
     while running:
         dt = clock.tick(FPS) / 1000.0
@@ -261,6 +277,8 @@ def main():
                     player.switch_weapon('rifle')
                 if ev.key == pygame.K_2:
                     player.switch_weapon('pistol')
+                if ev.key == pygame.K_3:
+                    player.switch_weapon('BEST GUN')
                 if ev.key == pygame.K_r and player.health <= 0:
                     # restart
                     enemies.empty(); bullets.empty(); pickups.empty()
@@ -271,6 +289,25 @@ def main():
                     safe_radius = max(SCREEN_W, SCREEN_H)//2
                     safe_center = Vector2(SCREEN_W//2, SCREEN_H//2)
                     paused = False
+                   # event=ev
+            elif ev.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = ev.pos
+                handle_rect = pygame.Rect(
+                ENEMY_SLIDER_X + int(enemy_slider_value * (ENEMY_SLIDER_W - ENEMY_SLIDER_HANDLE_W)),
+                ENEMY_SLIDER_Y - (ENEMY_SLIDER_HANDLE_H - ENEMY_SLIDER_H) // 2,
+                ENEMY_SLIDER_HANDLE_W, ENEMY_SLIDER_HANDLE_H
+    )
+                if handle_rect.collidepoint(mx, my):
+                  enemy_dragging = True
+
+            elif ev.type == pygame.MOUSEBUTTONUP:
+                 enemy_dragging = False
+
+            elif ev.type == pygame.MOUSEMOTION and enemy_dragging:
+                mx, my = ev.pos
+                enemy_slider_value = max(0, min(1, (mx - ENEMY_SLIDER_X) / (ENEMY_SLIDER_W - ENEMY_SLIDER_HANDLE_W)))
+                max_enemies = int(ENEMY_MIN_LIMIT + enemy_slider_value * (ENEMY_MAX_LIMIT - ENEMY_MIN_LIMIT))
+
 
         keys = pygame.key.get_pressed()
         mouse_pos = pygame.mouse.get_pos()
@@ -292,8 +329,9 @@ def main():
                     x = -60; y = random.randint(0, SCREEN_H)
                 else:
                     x = SCREEN_W + 60; y = random.randint(0, SCREEN_H)
-                e = Enemy(enemy_surf, x, y)
-                enemies.add(e)
+                if len(enemies)<max_enemies:
+                 e = Enemy(enemy_surf, x, y)
+                 enemies.add(e)
 
             # update enemies
             for e in list(enemies):
@@ -328,7 +366,7 @@ def main():
                     player.score += 4
 
             # safe zone shrink behavior
-            safe_shrink_timer -= dt
+           # safe_shrink_timer -= dt
             if safe_shrink_timer <= 0:
                 safe_shrink_timer = SAFE_ZONE_SHRINK_INTERVAL
                 safe_radius = max(60, int(safe_radius * SAFE_ZONE_SHRINK_FACTOR))
@@ -388,7 +426,21 @@ def main():
         screen.blit(score_text, (hud_x, hud_y+48))
         screen.blit(weapon_text, (hud_x, hud_y+72))
         screen.blit(safe_text, (hud_x, hud_y+100))
+        
+        #
+        # Enemy count slider bar
+        pygame.draw.rect(screen, (180,180,180), (ENEMY_SLIDER_X, ENEMY_SLIDER_Y, ENEMY_SLIDER_W, ENEMY_SLIDER_H))
+# Handle
+        handle_x = ENEMY_SLIDER_X + int(enemy_slider_value * (ENEMY_SLIDER_W - ENEMY_SLIDER_HANDLE_W))
+        handle_y = ENEMY_SLIDER_Y - (ENEMY_SLIDER_HANDLE_H - ENEMY_SLIDER_H)//2
+        pygame.draw.rect(screen, (100,200,255), (handle_x, handle_y, ENEMY_SLIDER_HANDLE_W, ENEMY_SLIDER_HANDLE_H))
 
+# Label
+        font_small = pygame.font.SysFont("Arial", 20)
+        label = font_small.render(f"Max Enemies: {max_enemies}", True, (255,255,255))
+        screen.blit(label, (ENEMY_SLIDER_X + ENEMY_SLIDER_W + 20, ENEMY_SLIDER_Y - 10))
+
+        #
         if paused and player.health <= 0:
             gg = big_font.render('YOU DIED', True, (255,80,80))
             sub = font.render('Press R to restart or ESC to quit', True, (220,220,220))
@@ -401,4 +453,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
