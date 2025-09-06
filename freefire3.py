@@ -151,6 +151,7 @@ class Player(pygame.sprite.Sprite):
         if name in self.weapons:
             self.current_weapon = name
 
+
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, surf, x, y):
         super().__init__()
@@ -188,7 +189,56 @@ class Enemy(pygame.sprite.Sprite):
             direction = direction.normalize()
             b = Bullet(self.pos.x + direction.x*10, self.pos.y + direction.y*10, direction, ENEMY_BULLET_SPEED, random.randint(6,12), 'enemy')
             bullets_group.add(b)
+class Explosion(pygame.sprite.Sprite):
+    def __init__(self, pos, radius):
+        super().__init__()
+        self.image = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+        pygame.draw.circle(self.image, (255, 150, 0, 120), (radius, radius), radius)
+        self.rect = self.image.get_rect(center=pos)
+        self.timer = 0.3  # visible for 0.3s
 
+    def update(self, dt):
+        self.timer -= dt
+        if self.timer <= 0:
+            self.kill()
+
+class Grenade(pygame.sprite.Sprite):
+    def __init__(self, pos, target, speed=400, fuse_time=1.2, radius=100, damage=100):
+        super().__init__()
+        self.image = pygame.Surface((12, 12), pygame.SRCALPHA)
+        pygame.draw.circle(self.image, (0, 255, 0), (6, 6), 6)  # green circle
+        self.rect = self.image.get_rect(center=pos)
+        self.pos = pygame.Vector2(pos)
+        self.vel = (pygame.Vector2(target) - self.pos).normalize() * speed
+        self.fuse_time = fuse_time  # seconds before explosion
+        self.timer = 0
+        self.radius = radius
+        self.damage = damage
+        self.exploded = False
+
+    def update(self, dt, enemies, all_sprites):
+        if not self.exploded:
+            self.timer += dt
+            self.pos += self.vel * dt
+            self.rect.center = self.pos
+
+            # Explode after fuse_time
+            if self.timer >= self.fuse_time:
+                self.explode(enemies, all_sprites)
+
+    def explode(self, enemies, all_sprites):
+        self.exploded = True
+        # Create explosion effect
+        explosion = Explosion(self.rect.center, self.radius)
+        all_sprites.add(explosion)
+
+        # Damage enemies in radius
+        for enemy in enemies:
+            if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= self.radius:
+                enemy.kill()  # simple: instant kill
+
+        self.kill()
+        
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, x, y, direction, speed, damage, owner):
         super().__init__()
@@ -238,10 +288,18 @@ def main():
     enemies = pygame.sprite.Group()
     bullets = pygame.sprite.Group()
     pickups = pygame.sprite.Group()
+ 
+    #grenede stuff
+    all_sprites = pygame.sprite.Group()   # <--- ADD THIS
+    grenades = pygame.sprite.Group()      # <--- ADD THIS
 
+    # grenade timing
+    grenade_cooldown = 0                  # <--- ADD THIS
+    grenade_delay = 2.0  
+    
     player = Player(player_surf)
     player_group.add(player)
-    player_group.add(player)
+    all_sprites.add(player)               # <--- so explosions & grenades can be managed here too
 
     spawn_timer = ENEMY_SPAWN_START
     running = True
@@ -269,6 +327,11 @@ def main():
             if ev.type == pygame.QUIT:
                 running = False
             elif ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_g and grenade_cooldown <= 0:
+                  grenade = Grenade(player.rect.center, mouse_pos)
+                  all_sprites.add(grenade)
+                  grenades.add(grenade)
+                  grenade_cooldown = grenade_delay
                 if ev.key == pygame.K_ESCAPE:
                     running = False
                 if ev.key == pygame.K_p:
@@ -349,6 +412,14 @@ def main():
                     player.score += 10
 
             bullets.update(dt)
+            
+                # update grenades
+            grenades.update(dt, enemies, all_sprites)
+
+            # reduce grenade cooldown
+            if grenade_cooldown > 0:
+             grenade_cooldown -= dt
+
 
             # bullets collisions
             for b in [bb for bb in bullets if bb.owner == 'player']:
@@ -407,6 +478,8 @@ def main():
 
         enemies.draw(screen)
         bullets.draw(screen)
+        grenades.draw(screen)
+       # all_sprites.draw(screen)
         pickups.draw(screen)
         player_group.draw(screen)
 
@@ -428,24 +501,33 @@ def main():
         score_text = font.render(f'Score: {player.score}', True, (255,255,255))
         weapon_text = font.render(f'Weapon: {player.current_weapon}', True, (220,220,220))
         safe_text = font.render(f'Safe radius: {int(safe_radius)}', True, (200,220,255))
+        grenade_text = font.render(f"Grenade CD: {max(0, round(grenade_cooldown,1))}s", True, (0,255,0))
+       
+       
+
+        
+        #
+        # Enemy count slider bar
+        
+# Handle
+        ENEMY_SLIDER_X, ENEMY_SLIDER_Y = hud_x,hud_y+160
+        handle_x = ENEMY_SLIDER_X + int(enemy_slider_value * (ENEMY_SLIDER_W - ENEMY_SLIDER_HANDLE_W))
+        handle_y = ENEMY_SLIDER_Y - (ENEMY_SLIDER_HANDLE_H - ENEMY_SLIDER_H)//2
+
+# Label
+        font_small = pygame.font.SysFont("Arial", 20)
+        label = font_small.render(f"Max Enemies: {max_enemies}", True, (255,255,255))
+        
+        pygame.draw.rect(screen, (100,200,255), (handle_x, handle_y, ENEMY_SLIDER_HANDLE_W, ENEMY_SLIDER_HANDLE_H))
+        pygame.draw.rect(screen, (180,180,180), (ENEMY_SLIDER_X, ENEMY_SLIDER_Y, ENEMY_SLIDER_W, ENEMY_SLIDER_H))
         screen.blit(health_text, (hud_x, hud_y))
         screen.blit(ammo_text, (hud_x, hud_y+24))
         screen.blit(score_text, (hud_x, hud_y+48))
         screen.blit(weapon_text, (hud_x, hud_y+72))
         screen.blit(safe_text, (hud_x, hud_y+100))
-        
-        #
-        # Enemy count slider bar
-        pygame.draw.rect(screen, (180,180,180), (ENEMY_SLIDER_X, ENEMY_SLIDER_Y, ENEMY_SLIDER_W, ENEMY_SLIDER_H))
-# Handle
-        handle_x = ENEMY_SLIDER_X + int(enemy_slider_value * (ENEMY_SLIDER_W - ENEMY_SLIDER_HANDLE_W))
-        handle_y = ENEMY_SLIDER_Y - (ENEMY_SLIDER_HANDLE_H - ENEMY_SLIDER_H)//2
-        pygame.draw.rect(screen, (100,200,255), (handle_x, handle_y, ENEMY_SLIDER_HANDLE_W, ENEMY_SLIDER_HANDLE_H))
-
-# Label
-        font_small = pygame.font.SysFont("Arial", 20)
-        label = font_small.render(f"Max Enemies: {max_enemies}", True, (255,255,255))
-        screen.blit(label, (ENEMY_SLIDER_X + ENEMY_SLIDER_W + 20, ENEMY_SLIDER_Y - 10))
+        screen.blit(grenade_text, (hud_x, hud_y+130))
+        screen.blit(label, (hud_x, hud_y+180))
+       # screen.blit(label, (ENEMY_SLIDER_X + ENEMY_SLIDER_W + 20, ENEMY_SLIDER_Y - 10))
 
         #
         if paused and player.health <= 0:
