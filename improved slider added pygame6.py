@@ -718,7 +718,7 @@ def main():
                 if ev.key == pygame.K_2:
                     player.switch_weapon('pistol')
                 if ev.key == pygame.K_3:
-                    player.switch_weapon('BEST _GUN')
+                    player.switch_weapon('BEST_GUN')
                 if ev.key == pygame.K_r and player.health <= 0:
                     # restart
                     enemies.empty(); bullets.empty(); pickups.empty()
