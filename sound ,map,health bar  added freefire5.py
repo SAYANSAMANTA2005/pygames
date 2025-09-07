@@ -36,7 +36,7 @@ ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 30   # user can allow 1–30 enemies
 GRANADE_EXPLOSION_RADIOUS=100
 # Boss settings
 BOSS_APPERENCE_DURATION=2
-MAX_BOSSES_ON_SCREEN=1
+MAX_BOSSES_ON_SCREEN=2
 #mini map settings
 # ----- MINI-MAP SETTINGS -----
 MINIMAP_W, MINIMAP_H = 180, 180
@@ -215,7 +215,7 @@ class Player(pygame.sprite.Sprite):
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, surf, x, y):
+    def __init__(self, surf, x, y, etype="normal"):
         super().__init__()
         s = random.randint(52,92)
         self.is_boss = False
@@ -223,11 +223,71 @@ class Enemy(pygame.sprite.Sprite):
         self.image = self.orig.copy()
         self.rect = self.image.get_rect(center=(x,y))
         self.pos = Vector2(self.rect.center)
-        self.speed = random.uniform(40, 120)
-        self.health = random.randint(22, 68)
-        self.fire_timer = random.uniform(0.8, 2.0)
+
+        # Enemy type
+        self.type = etype
+        # Default body color
+        body_color = (200, 60, 60)
+        head_color = (90,30,30)
+        chest_color = (150,30,30)
+
+        # Customize color/shape per type
+        if etype == "runner":       # Fast, weak
+            body_color = (255, 100, 50)       # bright orange
+            head_color = (180, 50, 50)
+            chest_color = (220, 80, 80)
+            # maybe taller/slimmer shape
+            pygame.draw.rect(self.orig, body_color, (s*0.3, s*0.3, s*0.4, s*0.5), border_radius=5)
+        elif etype == "tank":       # Slow, strong
+            body_color = (255, 220, 120)   # bright pastel, yellow-pink with some green tone
+
+       # dark blue
+            head_color = (30,30,90)
+            chest_color = (50,50,150)
+            pygame.draw.rect(self.orig, body_color, (s*0.2, s*0.25, s*0.6, s*0.5), border_radius=10)
+        elif etype == "sniper":     # Slow, long-range
+            body_color = (50, 180, 50)       # green
+            head_color = (30,100,30)
+            chest_color = (40,140,40)
+            pygame.draw.ellipse(self.orig, body_color, (s*0.25, s*0.3, s*0.5, s*0.5))
+        else:                       # normal
+            body_color = (200,60,60)  # red
+            head_color = (90,30,30)
+            chest_color = (150,30,30)
+            pygame.draw.rect(self.orig, body_color, (s*0.22, s*0.32, s*0.56, s*0.46), border_radius=8)
+
+        # head
+        pygame.draw.circle(self.orig, head_color, (s//2, int(s*0.18)), int(s/10))
+        # chest/vest
+        pygame.draw.rect(self.orig, chest_color, (s*0.35, s*0.5, s*0.3, s*0.15), border_radius=6)
+
+        # Attributes by type
+        if etype == "runner":
+            self.speed = random.uniform(180, 250)       # fast
+            self.health = random.randint(15, 35)        # weak
+            self.fire_timer = random.uniform(2.0, 4.0)  # rarely shoots
+            self.max_health = self.health   # 👈 add this
+        elif etype == "tank":
+            self.speed = random.uniform(200, 300)         # slow
+            self.health = random.randint(100, 160)      # strong
+            self.fire_timer = random.uniform(0.3, 0.7)  # shoots normally
+            self.max_health = self.health   # 👈 add this
+        elif etype == "sniper":
+            self.speed = random.uniform(30, 60)         # slow
+            self.health = random.randint(30, 50)        # moderate HP
+            self.fire_timer = random.uniform(1.5, 2.5)  # shoots less often
+            self.shoot_distance = random.randint(300, 600)  # only shoots if far
+            self.max_health = self.health   # 👈 add this
+        else:
+            # default enemy
+            self.speed = random.uniform(40, 120)
+            self.health = random.randint(22, 68)
+            self.fire_timer = random.uniform(0.8, 2.0)
+            self.max_health = self.health   # 👈 add this
+
 
     def update(self, dt, player, bullets_group):
+        # Move toward player
         dirv = player.pos - self.pos
         dist = dirv.length()
         if dist > 18:
@@ -241,16 +301,41 @@ class Enemy(pygame.sprite.Sprite):
         angle = math.degrees(math.atan2(-dy, dx))
         self.image = pygame.transform.rotozoom(self.orig, angle, 1.0)
         self.rect = self.image.get_rect(center=self.rect.center)
+        # ---- Draw health bar ----
+        max_width = self.rect.width * 0.6   # bar width inside body
+        height = 5                          # bar height
+        health_ratio = max(self.health, 0) / self.max_health
+        filled_width = int(max_width * health_ratio)
 
-        # shooting
+        # Position bar slightly below head
+        bar_x = self.rect.width * 0.2
+        bar_y = self.rect.height * 0.8
+
+        pygame.draw.rect(self.image, (180, 0, 0), (bar_x, bar_y, max_width, height))  # red bg
+        pygame.draw.rect(self.image, (0, 255, 0), (bar_x, bar_y, filled_width, height))  # green fill
+        # -------------------------#
+        # shooting logic
         self.fire_timer -= dt
-        if self.fire_timer <= 0:
-            self.fire_timer = random.uniform(0.9, 2.4)
+        shoot_condition = True
+        if self.type == "runner":
+            shoot_condition = random.random() < 10000
+        elif self.type == "sniper":
+            shoot_condition = dist >= getattr(self, "shoot_distance", 300)
+
+        if self.fire_timer <= 0 and shoot_condition:
+            if self.type == "runner":
+                self.fire_timer = random.uniform(2.0, 4.0)
+            elif self.type == "sniper":
+                self.fire_timer = random.uniform(1.5, 2.5)
+            else:
+                self.fire_timer = random.uniform(0.8, 2.0)
+            
             direction = Vector2(dx, dy)
             if direction.length_squared() == 0:
                 direction = Vector2(1,0)
             direction = direction.normalize()
-            b = Bullet(self.pos.x + direction.x*10, self.pos.y + direction.y*10, direction, ENEMY_BULLET_SPEED, random.randint(6,12), 'enemy')
+            b = Bullet(self.pos.x + direction.x*10, self.pos.y + direction.y*10,
+                       direction, ENEMY_BULLET_SPEED, random.randint(6,12), 'enemy')
             bullets_group.add(b)
 class Boss(Enemy):
     def __init__(self, surf, x, y):
@@ -612,7 +697,9 @@ def main():
                 else:
                     x = SCREEN_W + 60; y = random.randint(0, SCREEN_H)
                 if len(enemies)<max_enemies :
-                 e = Enemy(enemy_surf, x, y)
+                 etype = random.choices( ["runner", "tank", "sniper", "normal"], 
+                                        weights=[0.1, 0.2, 0.2, 0.5])[0]
+                 e = Enemy(enemy_surf, x, y, etype)
                  enemies.add(e)
             airdrop_timer -= dt
             if airdrop_timer <= 0:
