@@ -36,6 +36,9 @@ ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 30   # user can allow 1–30 enemies
 GRANADE_EXPLOSION_RADIOUS=1000
 # Boss settings
 BOSS_APPERENCE_DURATION=2
+MAX_BOSSES_ON_SCREEN=1
+cntboss=0
+BOSS =[]
 # ---------- UTIL: procedural art ----------
 def make_player_surface(size=96):
     w, h = size, size
@@ -108,7 +111,7 @@ class Player(pygame.sprite.Sprite):
         self.weapons = {
             'rifle': [PLAYER_FIRE_RATE_RIFLE, 16, PLAYER_BULLET_SPEED, self.ammo],
             'pistol': [PLAYER_FIRE_RATE_PISTOL, 34, PLAYER_BULLET_SPEED*0.6, self.ammo],
-            'BEST GUN': [PLAYER_FIRE_RATE_PISTOL*1.2, 40, PLAYER_BULLET_SPEED, self.ammo]
+            'BEST_GUN': [PLAYER_FIRE_RATE_PISTOL, 40, PLAYER_BULLET_SPEED, self.ammo]
         }
         self.current_weapon = 'rifle'
         self.score = 0 
@@ -282,6 +285,7 @@ class Grenade(pygame.sprite.Sprite):
                 self.explode(enemies, all_sprites)
 
     def explode(self, enemies, all_sprites):
+        global cntboss
         self.exploded = True
         # Create explosion effect
         explosion = Explosion(self.rect.center, self.radius)
@@ -291,6 +295,9 @@ class Grenade(pygame.sprite.Sprite):
         for enemy in enemies:
             #if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= self.radius:
             if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= GRANADE_EXPLOSION_RADIOUS:
+                if isinstance(enemy, Boss):
+                    cntboss-=1
+                    #enemy.health -= 400  # high damage to boss
                 enemy.kill()  # simple: instant kill
 
         self.kill()
@@ -324,15 +331,52 @@ class Pickup(pygame.sprite.Sprite):
         else:
             pygame.draw.rect(self.image, (80,160,220), (0,0,18,18), border_radius=4)
         self.rect = self.image.get_rect(center=(x,y))
+class AirDrop(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.kind = random.choice(['double_damage', 'speed_boost'])
+        #self.kind = random.choice(['BEST_GUN',  'double_damage'])
+        self.image = pygame.Surface((28,28), pygame.SRCALPHA)
+        #pygame.draw.rect(self.image, (255,215,0), (0,0,28,28), border_radius=6)  # gold crate
+        #pygame.draw.rect(self.image, (0,0,0), (4,4,20,20), 2)  # outline
+          # --- Draw vibrant box ---
+        # main body
+        size = 36  # bigger than pickups
+        pygame.draw.rect(self.image, (255, 50, 50), (0, 0, size, size), border_radius=6)  # bright red
+        # border
+        pygame.draw.rect(self.image, (255, 215, 0), (0, 0, size, size), 4, border_radius=6)  # golden border
+        # stripe / cross
+        pygame.draw.line(self.image, (0, 200, 255), (0, size//2), (size, size//2), 4)  # horizontal stripe
+        pygame.draw.line(self.image, (0, 200, 255), (size//2, 0), (size//2, size), 4)  # vertical stripe
+
+        self.rect = self.image.get_rect(center=(x,y))
+
+class PowerUpEffect:
+    def __init__(self):
+        self.double_damage = 0
+        self.speed_boost = 0
+
+    def update(self, dt):
+        if self.double_damage > 0:
+            self.double_damage -= dt
+        if self.speed_boost > 0:
+            self.speed_boost -= dt
+
+    def is_active(self, kind):
+        if kind == 'double_damage':
+            return self.double_damage > 0
+        if kind == 'speed_boost':
+            return self.speed_boost > 0
+        return False
 
 # ---------- MAIN ----------
 def main():
-    wave_counter = 0
+    
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("FreeFire-like (Procedural Art, Offline)")
     clock = pygame.time.Clock()
-
+    game_start_time = pygame.time.get_ticks()
     # create art surfaces
     player_surf = make_player_surface(96)
     enemy_surf = make_enemy_surface(80)
@@ -349,6 +393,10 @@ def main():
     #grenede stuff
     all_sprites = pygame.sprite.Group()   # <--- ADD THIS
     grenades = pygame.sprite.Group()      # <--- ADD THIS
+    # AIR DROP GROUP
+    airdrops = pygame.sprite.Group()
+    powerup_effects = PowerUpEffect()
+    airdrop_timer = 15.0  # first drop after 15s
 
     # grenade timing
     grenade_cooldown = 0                  # <--- ADD THIS
@@ -377,9 +425,13 @@ def main():
     enemy_slider_value = 0.1  # between 0 and 1
     enemy_dragging = False
     max_enemies = int(ENEMY_MIN_LIMIT + enemy_slider_value * (ENEMY_MAX_LIMIT - ENEMY_MIN_LIMIT))
-
+    
+    ##
+    wave_counter = 0
+    global cntboss
     while running:
         dt = clock.tick(FPS) / 1000.0
+
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 running = False
@@ -398,7 +450,7 @@ def main():
                 if ev.key == pygame.K_2:
                     player.switch_weapon('pistol')
                 if ev.key == pygame.K_3:
-                    player.switch_weapon('BEST GUN')
+                    player.switch_weapon('BEST _GUN')
                 if ev.key == pygame.K_r and player.health <= 0:
                     # restart
                     enemies.empty(); bullets.empty(); pickups.empty()
@@ -448,13 +500,17 @@ def main():
                 spawn_timer = max(0.75 - (player.score * 0.0015), 0.28)
                 #
                 wave_counter += 1
-    
+                elapsed_time = (pygame.time.get_ticks() - game_start_time) / 1000
     # Every 5th wave spawn a boss
-                if wave_counter % BOSS_APPERENCE_DURATION == 0:
+                isboss=False
+                if wave_counter% BOSS_APPERENCE_DURATION == 0 :#atmax 3 boss
                    x = random.choice([-200, SCREEN_W+200])
                    y = random.randint(0, SCREEN_H)
                    boss = Boss(enemy_surf, x, y)
-                   enemies.add(boss)
+                   if(cntboss<MAX_BOSSES_ON_SCREEN):
+                     enemies.add(boss)
+                     #isboss=True
+                     cntboss+=1
                 #
                 side = random.choice(['top','bottom','left','right'])
                 if side == 'top':
@@ -465,15 +521,26 @@ def main():
                     x = -60; y = random.randint(0, SCREEN_H)
                 else:
                     x = SCREEN_W + 60; y = random.randint(0, SCREEN_H)
-                if len(enemies)<max_enemies:
+                if len(enemies)<max_enemies :
                  e = Enemy(enemy_surf, x, y)
                  enemies.add(e)
+            airdrop_timer -= dt
+            if airdrop_timer <= 0:
+                angle = random.uniform(0, 2*math.pi)
+                dist = random.uniform(0, safe_radius * 0.8)
+                drop_x = int(safe_center.x + math.cos(angle)*dist)
+                drop_y = int(safe_center.y + math.sin(angle)*dist)
+                airdrops.add(AirDrop(drop_x, drop_y))
+                airdrop_timer = random.uniform(20, 35)  # next drop     
 
+        # update ---> ADD THSIS SECTION
+        
             # update enemies
             for e in list(enemies):
              e.update(dt, player, bullets)
              if e.health <= 0:
                 if isinstance(e, Boss):
+                       cntboss-=1
                        player.score += 200  # high reward
                 else:
                     player.score += 10
@@ -482,7 +549,7 @@ def main():
                 e.kill()
                    
 
-            bullets.update(dt)
+            bullets.update(dt)#// FIX THIS
             
                 # update grenades
             grenades.update(dt, enemies, all_sprites)
@@ -496,7 +563,7 @@ def main():
             for b in [bb for bb in bullets if bb.owner == 'player']:
                 hit = pygame.sprite.spritecollideany(b, enemies)
                 if hit:
-                    hit.health -= b.damage
+                    hit.health -= b.damage * (2 if powerup_effects.is_active('double_damage') else 1)
                     b.kill()
 
             for b in [bb for bb in bullets if bb.owner == 'enemy']:
@@ -505,14 +572,42 @@ def main():
                     b.kill()
 
             # pickups
+            # pickups
             for p in pygame.sprite.spritecollide(player, pickups, True):
                 if p.kind == 'health':
-                    player.health = min(PLAYER_MAX_HEALTH, player.health + 40)
-                    player.score += 6
+                   player.health = min(PLAYER_MAX_HEALTH, player.health + 40)
+                   player.score += 6
                 else:
+                   player.ammo += 40
+                   player.score += 4
+
+# airdrop pickups
+            for a in pygame.sprite.spritecollide(player, airdrops, True):
+                if a.kind == 'BEST GUN':
+                   player.switch_weapon('BEST GUN')
+                elif a.kind == 'health':
+                   player.health = min(PLAYER_MAX_HEALTH, player.health + 200)
+                elif a.kind == 'double_damage':
+                   powerup_effects.double_damage = 12.0  # 12s effect
+                elif a.kind == 'speed_boost':
+                   powerup_effects.speed_boost = 10.0  # 10s effect
+                player.score += 50
+
+            powerup_effects.update(dt)
+            if powerup_effects.is_active('speed_boost'):
+                   player.speed = PLAYER_SPEED * 1.6
+            else:
+                   player.speed = PLAYER_SPEED
+
+
+            #for p in pygame.sprite.spritecollide(player, pickups, True):
+                #if p.kind == 'health':
+                 #   player.health = min(PLAYER_MAX_HEALTH, player.health + 40)
+                  #  player.score += 6
+              #  else:
                    # player.ammo = min(PLAYER_MAX_AMMO, player.ammo + 40)
-                    player.ammo +=40
-                    player.score += 4
+                  #  player.ammo +=40
+                  #  player.score += 4
 
             # safe zone shrink behavior
            # safe_shrink_timer -= dt
@@ -527,11 +622,11 @@ def main():
 
             if player.health <= 0:
                 paused = True
-
+            
             # world_offset smoothing for parallax (follow player)
             target = player.pos - Vector2(SCREEN_W/2, SCREEN_H/2)
             world_offset += (target - world_offset) * min(1, dt * 3.0)
-
+           
         # ---------- DRAW ----------
         screen.fill((18,18,28))
 
@@ -553,6 +648,8 @@ def main():
        # all_sprites.draw(screen)
         pickups.draw(screen)
         player_group.draw(screen)
+        #air drop events
+        airdrops.draw(screen)
 
         # draw safe zone (semi-transparent ring)
         safe_surface = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
@@ -572,8 +669,18 @@ def main():
         score_text = font.render(f'Score: {player.score}', True, (255,255,255))
         weapon_text = font.render(f'Weapon: {player.current_weapon}', True, (220,220,220))
         safe_text = font.render(f'Safe radius: {int(safe_radius)}', True, (200,220,255))
-        grenade_text = font.render(f"Grenade CD: {max(0, round(grenade_cooldown,1))}s", True, (0,255,0))
        
+        grenade_text = font.render(f"Grenade CD: {max(0, round(grenade_cooldown,1))}s", True, (0,255,0))
+        
+        # power-up effects
+        if powerup_effects.is_active('double_damage'):
+          dd_text = font.render(f"Double DMG: {powerup_effects.double_damage:.1f}s", True, (255,0,0))
+          screen.blit(dd_text, (hud_x, hud_y+150))
+
+        if powerup_effects.is_active('speed_boost'):
+           sb_text = font.render(f"Speed Boost: {powerup_effects.speed_boost:.1f}s", True, (0,255,255))
+           screen.blit(sb_text, (hud_x, hud_y+170))
+    #
        
 
         
