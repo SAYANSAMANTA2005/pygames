@@ -33,10 +33,17 @@ ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 30   # user can allow 1–30 enemies
 
 
 # GEANADE 
-GRANADE_EXPLOSION_RADIOUS=1000
+GRANADE_EXPLOSION_RADIOUS=100
 # Boss settings
 BOSS_APPERENCE_DURATION=2
 MAX_BOSSES_ON_SCREEN=1
+#mini map settings
+# ----- MINI-MAP SETTINGS -----
+MINIMAP_W, MINIMAP_H = 180, 180
+MINIMAP_MARGIN = 20
+WORLD_W, WORLD_H = 4000, 3000   # same world size as your code
+
+
 cntboss=0
 
 #sound effects 
@@ -80,6 +87,51 @@ def make_cursor_surface(size=40):
     pygame.draw.line(surf, (255,255,255), (w//2 - 10, h//2), (w//2 + 10, h//2), 2)
     pygame.draw.line(surf, (255,255,255), (w//2, h//2-10), (w//2, h//2+10), 2)
     return surf
+def draw_minimap(screen, player, enemies, airdrops, safe_center, safe_radius):
+    # minimap rect (bottom-right corner)
+    mini_rect = pygame.Rect(
+        SCREEN_W - MINIMAP_W - MINIMAP_MARGIN,
+        SCREEN_H - MINIMAP_H - MINIMAP_MARGIN,
+        MINIMAP_W, MINIMAP_H
+    )
+
+    # background
+    pygame.draw.rect(screen, (20,20,40), mini_rect)
+    pygame.draw.rect(screen, (80,80,120), mini_rect, 2)
+
+    scale_x = MINIMAP_W / WORLD_W
+    scale_y = MINIMAP_H / WORLD_H
+
+    def world_to_minimap(pos):
+        return (
+            mini_rect.x + int(pos.x * scale_x),
+            mini_rect.y + int(pos.y * scale_y)
+        )
+
+    # safe zone circle
+    pygame.draw.circle(
+        screen, (50,140,200),
+        (mini_rect.x + int(safe_center.x * scale_x), mini_rect.y + int(safe_center.y * scale_y)),
+        int(safe_radius * scale_x), 1
+    )
+
+    # player
+    px, py = world_to_minimap(player.pos)
+    pygame.draw.circle(screen, (0,255,0), (px, py), 4)
+
+    # enemies
+    for e in enemies:
+        ex, ey = world_to_minimap(e.pos)
+        #if hasattr(e, "is_boss") and e.is_boss:  # bosses marked
+        if isinstance(e, Boss):
+            pygame.draw.circle(screen, (180,0,255), (ex, ey), 6)
+        else:
+            pygame.draw.circle(screen, (255,0,0), (ex, ey), 3)
+
+    # airdrops
+    for a in airdrops:
+        ax, ay = world_to_minimap(a.pos)
+        pygame.draw.rect(screen, (0,150,255), (ax-2, ay-2, 5, 5))
 
 def make_parallax_layer(seed, w=1024, h=1024, base=(40,80,40)):
     random.seed(seed)
@@ -166,6 +218,7 @@ class Enemy(pygame.sprite.Sprite):
     def __init__(self, surf, x, y):
         super().__init__()
         s = random.randint(52,92)
+        self.is_boss = False
         self.orig = pygame.transform.smoothscale(surf, (s,s))
         self.image = self.orig.copy()
         self.rect = self.image.get_rect(center=(x,y))
@@ -204,6 +257,8 @@ class Boss(Enemy):
         super().__init__(surf, x, y)
         self.orig = pygame.transform.smoothscale(surf, (200, 200))
         #
+        self.is_boss = True
+
         self.size = 200
         pygame.draw.polygon(
             self.orig, 
@@ -301,13 +356,19 @@ class Grenade(pygame.sprite.Sprite):
         all_sprites.add(explosion)
 
         # Damage enemies in radius
-        for enemy in enemies:
+       # for enemy in enemies:
             #if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= self.radius:
-            if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= GRANADE_EXPLOSION_RADIOUS:
-                if isinstance(enemy, Boss):
-                    cntboss-=1
+           # if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= GRANADE_EXPLOSION_RADIOUS:
+             #   if isinstance(enemy, Boss):
+              #      cntboss-=1
                     #enemy.health -= 400  # high damage to boss
-                enemy.kill()  # simple: instant kill
+               # enemy.kill()  # simple: instant kill
+        for enemy in enemies:
+          if enemy.rect and self.rect:   # <--- make sure rect exists
+              if pygame.Vector2(enemy.rect.center).distance_to(self.rect.center) <= GRANADE_EXPLOSION_RADIOUS:
+                   if isinstance(enemy, Boss):
+                     cntboss -= 1
+          enemy.kill()
 
         self.kill()
         
@@ -343,6 +404,7 @@ class Pickup(pygame.sprite.Sprite):
 class AirDrop(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
+        
         self.kind = random.choice(['double_damage', 'speed_boost'])
         #self.kind = random.choice(['BEST_GUN',  'double_damage'])
         self.image = pygame.Surface((28,28), pygame.SRCALPHA)
@@ -359,6 +421,7 @@ class AirDrop(pygame.sprite.Sprite):
         pygame.draw.line(self.image, (0, 200, 255), (size//2, 0), (size//2, size), 4)  # vertical stripe
 
         self.rect = self.image.get_rect(center=(x,y))
+        self.pos = pygame.Vector2(self.rect.center)   # <--- ADD THIS
 
 class PowerUpEffect:
     def __init__(self):
@@ -510,7 +573,7 @@ def main():
                 mx, my = ev.pos
                 enemy_slider_value = max(0, min(1, (mx - ENEMY_SLIDER_X) / (ENEMY_SLIDER_W - ENEMY_SLIDER_HANDLE_W)))
                 max_enemies = int(ENEMY_MIN_LIMIT + enemy_slider_value * (ENEMY_MAX_LIMIT - ENEMY_MIN_LIMIT))
-
+        
 
         keys = pygame.key.get_pressed()
         mouse_pos = pygame.mouse.get_pos()
@@ -711,7 +774,8 @@ def main():
            sb_text = font.render(f"Speed Boost: {powerup_effects.speed_boost:.1f}s", True, (0,255,255))
            screen.blit(sb_text, (hud_x, hud_y+170))
     #
-       
+        draw_minimap(screen, player, enemies, airdrops, safe_center, safe_radius)
+
 
         
         #
