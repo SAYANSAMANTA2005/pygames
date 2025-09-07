@@ -38,7 +38,12 @@ GRANADE_EXPLOSION_RADIOUS=1000
 BOSS_APPERENCE_DURATION=2
 MAX_BOSSES_ON_SCREEN=1
 cntboss=0
-BOSS =[]
+
+#sound effects 
+
+
+
+
 # ---------- UTIL: procedural art ----------
 def make_player_surface(size=96):
     w, h = size, size
@@ -287,6 +292,10 @@ class Grenade(pygame.sprite.Sprite):
     def explode(self, enemies, all_sprites):
         global cntboss
         self.exploded = True
+        
+        granad_sound = pygame.mixer.Sound("E:/PYGAME PROJECTS/assets/grenade.wav")
+        granad_sound.play()
+        
         # Create explosion effect
         explosion = Explosion(self.rect.center, self.radius)
         all_sprites.add(explosion)
@@ -373,6 +382,24 @@ class PowerUpEffect:
 def main():
     
     pygame.init()
+    # sound effects
+    pygame.mixer.init()
+
+# --- Load sounds ---
+   # shoot_sound = pygame.mixer.Sound("assets/sounds/shoot.wav")
+    #enemy_hit_sound = pygame.mixer.Sound("assets\\gunshoot.wav")
+    enemy_hit_sound = pygame.mixer.Sound("E:\\PYGAME PROJECTS\\assets\\gunshoot.wav")
+    boss_hit_sound= pygame.mixer.Sound("E:\\PYGAME PROJECTS\\assets\\boss.wav")
+   # granad_sound = pygame.mixer.Sound("E:\PYGAME PROJECTS\assets\granade2.mp3")
+
+# Adjust volume if needed
+    #shoot_sound.set_volume(0.4)   # medium
+    enemy_hit_sound.set_volume(0.5)  # louder
+    boss_hit_sound.set_volume(0.1)
+    #granad_sound.set_volume(0.1)
+    
+    # # #----- #
+    
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("FreeFire-like (Procedural Art, Offline)")
     clock = pygame.time.Clock()
@@ -539,10 +566,13 @@ def main():
             for e in list(enemies):
              e.update(dt, player, bullets)
              if e.health <= 0:
+                 # enemy is dead sound
                 if isinstance(e, Boss):
+                       boss_hit_sound.play()
                        cntboss-=1
                        player.score += 200  # high reward
                 else:
+                    enemy_hit_sound.play()
                     player.score += 10
                     if random.random() < 0.33:
                         pickups.add(Pickup(random.choice(['health','ammo']), e.pos.x, e.pos.y))
