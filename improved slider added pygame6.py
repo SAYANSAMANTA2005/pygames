@@ -23,7 +23,7 @@ ENEMY_SPAWN_START = 1.4
 SAFE_ZONE_SHRINK_INTERVAL = 10.0
 SAFE_ZONE_SHRINK_FACTOR = 0.80
 
-MAX_ENEMYS_ON_SCREEN=10
+MAX_ENEMYS_ON_SCREEN=50
 
 # Enemy count slider settings
 ENEMY_SLIDER_X, ENEMY_SLIDER_Y = 50, 60
@@ -35,7 +35,7 @@ ENEMY_MIN_LIMIT, ENEMY_MAX_LIMIT = 1, 100   # user can allow 1–30 enemies
 # GEANADE 
 GRANADE_EXPLOSION_RADIOUS=100
 # Boss settings
-BOSS_APPERENCE_DURATION=2
+BOSS_APPERENCE_DURATION=5
 MAX_BOSSES_ON_SCREEN=5
 # max boss setting
 # Boss count slider settings
@@ -543,7 +543,7 @@ class Grenade(pygame.sprite.Sprite):
                    if isinstance(enemy, Boss):
                      cntboss -= 1
           enemy.kill()
-
+        cntboss=0
         self.kill()
         
 class Bullet(pygame.sprite.Sprite):
@@ -871,8 +871,8 @@ def main():
 
 # airdrop pickups
             for a in pygame.sprite.spritecollide(player, airdrops, True):
-                if a.kind == 'BEST GUN':
-                   player.switch_weapon('BEST GUN')
+                if a.kind == 'BEST_GUN':
+                   player.switch_weapon('BEST_GUN')
                 elif a.kind == 'health':
                    player.health = min(PLAYER_MAX_HEALTH, player.health + 200)
                 elif a.kind == 'double_damage':
@@ -1015,6 +1015,7 @@ def main():
         if paused and player.health <= 0:
             gg = big_font.render('YOU DIED', True, (255,80,80))
             sub = font.render('Press R to restart or ESC to quit', True, (220,220,220))
+            cntboss=0
             screen.blit(gg, gg.get_rect(center=(SCREEN_W/2, SCREEN_H/2 - 20)))
             screen.blit(sub, sub.get_rect(center=(SCREEN_W/2, SCREEN_H/2 + 30)))
 
